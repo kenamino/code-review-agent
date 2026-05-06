@@ -17,6 +17,7 @@ const MOCK_USER: User = {
   role: "user",
   loginMethod: "local",
   createdAt: new Date(),
+  updatedAt: new Date(),
   lastSignedIn: new Date(),
 };
 
