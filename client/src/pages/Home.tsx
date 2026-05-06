@@ -6,9 +6,26 @@ import { motion } from 'framer-motion';
 import { Code2, Shield, Zap, BookOpen, ArrowRight, Sparkles } from 'lucide-react';
 import { getLoginUrl } from '@/const';
 
+function useLoginOrNavigate() {
+  const [, setLocation] = useLocation();
+  const loginUrl = getLoginUrl();
+  const isLocalDemo = loginUrl === '#';
+
+  const handleAction = () => {
+    if (isLocalDemo) {
+      setLocation('/workbench');
+    } else {
+      window.location.href = loginUrl;
+    }
+  };
+
+  return { handleAction, isLocalDemo };
+}
+
 export default function Home() {
   const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
+  const { handleAction, isLocalDemo } = useLoginOrNavigate();
 
   const features = [
     {
@@ -58,7 +75,7 @@ export default function Home() {
             >
               About
             </Button>
-            {user ? (
+            {user || isLocalDemo ? (
               <Button
                 onClick={() => setLocation('/workbench')}
                 className="bg-blue-600 hover:bg-blue-700"
@@ -67,7 +84,7 @@ export default function Home() {
               </Button>
             ) : (
               <Button
-                onClick={() => window.location.href = getLoginUrl()}
+                onClick={handleAction}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 Sign In
@@ -94,7 +111,7 @@ export default function Home() {
           <p className="text-xl text-slate-400 mb-8 max-w-2xl mx-auto">
             Four specialized AI agents work together to analyze your code from multiple perspectives: structure, security, performance, and documentation.
           </p>
-          {user ? (
+          {user || isLocalDemo ? (
             <Button
               onClick={() => setLocation('/workbench')}
               size="lg"
@@ -105,7 +122,7 @@ export default function Home() {
             </Button>
           ) : (
             <Button
-              onClick={() => window.location.href = getLoginUrl()}
+              onClick={handleAction}
               size="lg"
               className="bg-blue-600 hover:bg-blue-700 text-lg px-8"
             >
@@ -169,7 +186,7 @@ export default function Home() {
             <p className="text-blue-100 mb-8 text-lg max-w-2xl mx-auto">
               Submit your code snippet and let our AI agents provide comprehensive analysis in seconds.
             </p>
-            {user ? (
+            {user || isLocalDemo ? (
               <Button
                 onClick={() => setLocation('/workbench')}
                 size="lg"
@@ -180,7 +197,7 @@ export default function Home() {
               </Button>
             ) : (
               <Button
-                onClick={() => window.location.href = getLoginUrl()}
+                onClick={handleAction}
                 size="lg"
                 className="bg-white text-blue-600 hover:bg-slate-100"
               >
