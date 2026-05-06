@@ -28,51 +28,58 @@ export const appRouter = router({
         title: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const task = await db.createReviewTask({
-          userId: ctx.user.id,
-          codeContent: input.code,
-          language: input.language,
-          title: input.title || `Review - ${new Date().toLocaleString()}`,
-          status: 'processing',
-        });
-
-        const taskId = (task as any).insertId || task[0];
         const issues = await performCodeReview(input.code, input.language);
-        
-        for (const issue of issues) {
-          await db.createReviewIssue({
-            taskId,
-            agentType: issue.agentType,
-            severity: issue.severity,
-            title: issue.title,
-            description: issue.description,
-            lineNumber: issue.lineNumber,
-            suggestion: issue.suggestion,
+        const taskId = Date.now(); // Use timestamp as mock task ID
+
+        // Try to persist to DB, but work without it
+        try {
+          const task = await db.createReviewTask({
+            userId: ctx.user.id,
+            codeContent: input.code,
+            language: input.language,
+            title: input.title || `Review - ${new Date().toLocaleString()}`,
+            status: 'processing',
           });
+          const realTaskId = (task as any).insertId || task[0];
+
+          for (const issue of issues) {
+            await db.createReviewIssue({
+              taskId: realTaskId,
+              agentType: issue.agentType,
+              severity: issue.severity,
+              title: issue.title,
+              description: issue.description,
+              lineNumber: issue.lineNumber,
+              suggestion: issue.suggestion,
+            });
+          }
+
+          await db.updateReviewTaskStatus(realTaskId, 'completed', new Date());
+
+          const stats = await db.getOrCreateUserStatistics(ctx.user.id);
+          const errorCount = issues.filter(i => i.severity === 'error').length;
+          const warningCount = issues.filter(i => i.severity === 'warning').length;
+          const suggestionCount = issues.filter(i => i.severity === 'suggestion').length;
+
+          await db.updateUserStatistics(ctx.user.id, {
+            totalReviews: (stats.totalReviews || 0) + 1,
+            totalIssuesFound: (stats.totalIssuesFound || 0) + issues.length,
+            errorCount: (stats.errorCount || 0) + errorCount,
+            warningCount: (stats.warningCount || 0) + warningCount,
+            suggestionCount: (stats.suggestionCount || 0) + suggestionCount,
+          });
+        } catch (e) {
+          // DB not available - continue without persistence
+          console.log("[Review] Running in demo mode (no database)");
         }
-        
-        await db.updateReviewTaskStatus(taskId, 'completed', new Date());
-        
-        const stats = await db.getOrCreateUserStatistics(ctx.user.id);
-        const errorCount = issues.filter(i => i.severity === 'error').length;
-        const warningCount = issues.filter(i => i.severity === 'warning').length;
-        const suggestionCount = issues.filter(i => i.severity === 'suggestion').length;
-        
-        await db.updateUserStatistics(ctx.user.id, {
-          totalReviews: (stats.totalReviews || 0) + 1,
-          totalIssuesFound: (stats.totalIssuesFound || 0) + issues.length,
-          errorCount: (stats.errorCount || 0) + errorCount,
-          warningCount: (stats.warningCount || 0) + warningCount,
-          suggestionCount: (stats.suggestionCount || 0) + suggestionCount,
-        });
-        
+
         return {
           taskId,
           issuesCount: issues.length,
           issues,
         };
       }),
-    
+
     getTask: protectedProcedure
       .input(z.object({ taskId: z.number() }))
       .query(async ({ ctx, input }) => {
@@ -80,28 +87,43 @@ export const appRouter = router({
         if (!task || task.userId !== ctx.user.id) {
           throw new Error('Task not found');
         }
-        
+
         const issues = await db.getTaskIssues(input.taskId);
         const agentLogs = await db.getTaskAgentLogs(input.taskId);
-        
+
         return {
           task,
           issues,
           agentLogs,
         };
       }),
-    
+
     listTasks: protectedProcedure
       .input(z.object({ limit: z.number().default(20) }))
       .query(async ({ ctx, input }) => {
-        return db.getUserReviewTasks(ctx.user.id, input.limit);
+        try {
+          return await db.getUserReviewTasks(ctx.user.id, input.limit);
+        } catch {
+          return [];
+        }
       }),
-    
+
     getStatistics: protectedProcedure
       .query(async ({ ctx }) => {
-        return db.getOrCreateUserStatistics(ctx.user.id);
+        try {
+          return await db.getOrCreateUserStatistics(ctx.user.id);
+        } catch {
+          return {
+            totalReviews: 0,
+            totalIssuesFound: 0,
+            errorCount: 0,
+            warningCount: 0,
+            suggestionCount: 0,
+            fixedIssuesCount: 0,
+          };
+        }
       }),
-    
+
     getAgents: publicProcedure
       .query(() => {
         return getAgentNames();
